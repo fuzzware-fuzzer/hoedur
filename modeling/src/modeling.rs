@@ -125,6 +125,11 @@ impl Modeling {
         Ok(match self.access_models.raw_entry_mut().from_key(context) {
             RawEntryMut::Occupied(entry) => Some(entry.into_mut()),
             RawEntryMut::Vacant(entry) => {
+                // search for mmio model
+                if let Some(model) = self.mmio_models.get(context.mmio()) {
+                    return Ok(Some(model));
+                }
+
                 // fuzzware model creation
                 if let Some(fuzzware) = &mut self.fuzzware {
                     // only try to create model once
@@ -169,8 +174,8 @@ impl Modeling {
                     }
                 }
 
-                // try mmio model as fallback
-                self.mmio_models.get(context.mmio())
+                // no model found
+                None
             }
         })
     }
