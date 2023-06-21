@@ -1,0 +1,653 @@
+diff --git a/accel/tcg/cpu-exec.c b/accel/tcg/cpu-exec.c
+index a565a3f8ec..af56881999 100644
+--- a/accel/tcg/cpu-exec.c
++++ b/accel/tcg/cpu-exec.c
+@@ -375,7 +375,7 @@ cpu_tb_exec(CPUState *cpu, TranslationBlock *itb, int *tb_exit)
+          * counter hit zero); we must restore the guest PC to the address
+          * of the start of the TB.
+          */
+-        CPUClass *cc = CPU_GET_CLASS(cpu);
++        CPUClass *cc = (CPUClass *)cpu->parent_obj.parent_obj.class;
+         qemu_log_mask_and_addr(CPU_LOG_EXEC, last_tb->pc,
+                                "Stopped execution of TB chain before %p ["
+                                TARGET_FMT_lx "] %s\n",
+@@ -677,7 +677,7 @@ static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
+         return true;
+ #else
+         if (replay_exception()) {
+-            CPUClass *cc = CPU_GET_CLASS(cpu);
++            CPUClass *cc = (CPUClass *)cpu->parent_obj.parent_obj.class;
+             qemu_mutex_lock_iothread();
+             cc->tcg_ops->do_interrupt(cpu);
+             qemu_mutex_unlock_iothread();
+@@ -788,7 +788,7 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
+            True when it is, and we should restart on a new TB,
+            and via longjmp via cpu_loop_exit.  */
+         else {
+-            CPUClass *cc = CPU_GET_CLASS(cpu);
++            CPUClass *cc = (CPUClass *)cpu->parent_obj.parent_obj.class;
+ 
+             if (cc->tcg_ops->cpu_exec_interrupt &&
+                 cc->tcg_ops->cpu_exec_interrupt(cpu, interrupt_request)) {
+diff --git a/accel/tcg/cputlb.c b/accel/tcg/cputlb.c
+index a46f3a654d..ed9507dd5a 100644
+--- a/accel/tcg/cputlb.c
++++ b/accel/tcg/cputlb.c
+@@ -1303,7 +1303,7 @@ static inline ram_addr_t qemu_ram_addr_from_host_nofail(void *ptr)
+ static void tlb_fill(CPUState *cpu, target_ulong addr, int size,
+                      MMUAccessType access_type, int mmu_idx, uintptr_t retaddr)
+ {
+-    CPUClass *cc = CPU_GET_CLASS(cpu);
++    CPUClass *cc = (CPUClass *)cpu->parent_obj.parent_obj.class;
+     bool ok;
+ 
+     /*
+@@ -2383,6 +2383,8 @@ store_helper(CPUArchState *env, target_ulong addr, uint64_t val,
+ 
+         /* Ignore writes to ROM.  */
+         if (unlikely(tlb_addr & TLB_DISCARD_WRITE)) {
++            // HOEDUR: ROM write hook
++            rom_write_hook(retaddr, addr, val, size);
+             return;
+         }
+ 
+diff --git a/accel/tcg/translate-all.c b/accel/tcg/translate-all.c
+index b83161a081..6525d802d2 100644
+--- a/accel/tcg/translate-all.c
++++ b/accel/tcg/translate-all.c
+@@ -1505,6 +1505,9 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
+                           "Restarting code generation with "
+                           "smaller translation block (max %d insns)\n",
+                           max_insns);
++            // HOEDUR: panic on insn overflows
++            // otherwise we may end up with timing issues in trace-mode
++            abort();
+             goto tb_overflow;
+ 
+         default:
+diff --git a/accel/tcg/translator.c b/accel/tcg/translator.c
+index fe7af9b943..78f531a7be 100644
+--- a/accel/tcg/translator.c
++++ b/accel/tcg/translator.c
+@@ -51,6 +51,25 @@ static inline void translator_page_protect(DisasContextBase *dcbase,
+ #endif
+ }
+ 
++// HOEDUR: START
++#include <tcg/tcg-internal.h>
++static void gen_tcg_pc_hook(tcg_hook_t *hook, DisasContextBase *db)
++{
++    // external hook maybe unset
++    if (hook) {
++        TCGHelperInfo* callback = hook(db);
++
++        if (callback) {
++            // call tcg callback function with pc
++            TCGv_i64 tb_pc = tcg_const_i64(db->pc_next);
++            TCGTemp *args[1] = { tcgv_i64_temp(tb_pc) };
++            tcg_gen_callN(callback->func, NULL, 1, args);
++            tcg_temp_free_i64(tb_pc);
++        }
++    }
++}
++// HOEDUR: END
++
+ void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
+                      CPUState *cpu, TranslationBlock *tb, int max_insns)
+ {
+@@ -80,6 +99,9 @@ void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
+ 
+     plugin_enabled = plugin_gen_tb_start(cpu, tb, cflags & CF_MEMI_ONLY);
+ 
++    // HOEDUR: tcg basic block start hook
++    gen_tcg_pc_hook(tb_start_hook, db);
++
+     while (true) {
+         db->num_insns++;
+         ops->insn_start(db, cpu);
+@@ -89,6 +111,9 @@ void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
+             plugin_gen_insn_start(cpu, db);
+         }
+ 
++        // HOEDUR: tcg instruction start hook
++        gen_tcg_pc_hook(insn_start_hook, db);
++
+         /* Disassemble one instruction.  The translate_insn hook should
+            update db->pc_next and db->is_jmp to indicate what should be
+            done next -- either exiting this loop or locate the start of
+@@ -116,6 +141,9 @@ void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
+             plugin_gen_insn_end();
+         }
+ 
++        // HOEDUR: tcg instruction end hook
++        gen_tcg_pc_hook(insn_end_hook, db);
++
+         /* Stop translation if the output buffer is full,
+            or we have executed all of the allowed instructions.  */
+         if (tcg_op_buf_full() || db->num_insns >= db->max_insns) {
+@@ -132,6 +160,9 @@ void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
+         plugin_gen_tb_end(cpu);
+     }
+ 
++    // HOEDUR: tcg basic block end hook
++    gen_tcg_pc_hook(tb_end_hook, db);
++
+     /* The disas_log hook may use these values rather than recompute.  */
+     tb->size = db->pc_next - db->pc_first;
+     tb->icount = db->num_insns;
+diff --git a/hw/core/cpu-sysemu.c b/hw/core/cpu-sysemu.c
+index 00253f8929..7c0dd8dd77 100644
+--- a/hw/core/cpu-sysemu.c
++++ b/hw/core/cpu-sysemu.c
+@@ -69,7 +69,7 @@ hwaddr cpu_get_phys_page_debug(CPUState *cpu, vaddr addr)
+ 
+ int cpu_asidx_from_attrs(CPUState *cpu, MemTxAttrs attrs)
+ {
+-    CPUClass *cc = CPU_GET_CLASS(cpu);
++    CPUClass *cc = (CPUClass *)cpu->parent_obj.parent_obj.class;
+     int ret = 0;
+ 
+     if (cc->sysemu_ops->asidx_from_attrs) {
+diff --git a/hw/intc/armv7m_nvic.c b/hw/intc/armv7m_nvic.c
+index 1f7763964c..a4296fa87d 100644
+--- a/hw/intc/armv7m_nvic.c
++++ b/hw/intc/armv7m_nvic.c
+@@ -584,10 +584,14 @@ static void do_armv7m_nvic_set_pending(void *opaque, int irq, bool secure,
+              * which saves having to have an extra argument is_terminal
+              * that we'd only use in one place.
+              */
++            /* HOEDUR:
+             cpu_abort(&s->cpu->parent_obj,
+                       "Lockup: can't take terminal derived exception "
+                       "(original exception priority %d)\n",
+                       s->vectpending_prio);
++            */
++            nvic_abort_hook(irq);
++            return;
+         }
+         /* We now continue with the same code as for a normal pending
+          * exception, which will cause us to pend the derived exception.
+@@ -650,9 +654,13 @@ static void do_armv7m_nvic_set_pending(void *opaque, int irq, bool secure,
+                  * Lockup condition due to a guest bug. We don't model
+                  * Lockup, so report via cpu_abort() instead.
+                  */
++                /* HOEDUR:
+                 cpu_abort(&s->cpu->parent_obj,
+                           "Lockup: can't escalate %d to HardFault "
+                           "(current priority %d)\n", irq, running);
++                */
++                nvic_abort_hook(irq);
++                return;
+             }
+ 
+             /* HF may be banked but there is only one shared HFSR */
+@@ -2477,7 +2485,7 @@ static const MemoryRegionOps nvic_sysreg_ops = {
+     .endianness = DEVICE_NATIVE_ENDIAN,
+ };
+ 
+-static int nvic_post_load(void *opaque, int version_id)
++int nvic_post_load(void *opaque, int version_id)
+ {
+     NVICState *s = opaque;
+     unsigned i;
+@@ -2523,7 +2531,7 @@ static bool nvic_security_needed(void *opaque)
+     return arm_feature(&s->cpu->env, ARM_FEATURE_M_SECURITY);
+ }
+ 
+-static int nvic_security_post_load(void *opaque, int version_id)
++int nvic_security_post_load(void *opaque, int version_id)
+ {
+     NVICState *s = opaque;
+     int i;
+@@ -2740,3 +2748,7 @@ static void armv7m_nvic_register_types(void)
+ }
+ 
+ type_init(armv7m_nvic_register_types)
++
++// HOEDUR: START
++nvic_abort_hook_t *nvic_abort_hook = NULL;
++// HOEDUR: END
+diff --git a/include/exec/exec-all.h b/include/exec/exec-all.h
+index 311e5fb422..9bc3e96bc1 100644
+--- a/include/exec/exec-all.h
++++ b/include/exec/exec-all.h
+@@ -465,8 +465,8 @@ struct TranslationBlock {
+     uint32_t flags; /* flags defining in which context the code was generated */
+     uint32_t cflags;    /* compile flags */
+ 
+-/* Note that TCG_MAX_INSNS is 512; we validate this match elsewhere. */
+-#define CF_COUNT_MASK    0x000001ff
++/* Note that TCG_MAX_INSNS is 256; we validate this match elsewhere. */
++#define CF_COUNT_MASK    0x000000ff
+ #define CF_NO_GOTO_TB    0x00000200 /* Do not chain with goto_tb */
+ #define CF_NO_GOTO_PTR   0x00000400 /* Do not chain with goto_ptr */
+ #define CF_SINGLE_STEP   0x00000800 /* gdbstub single-step in effect */
+diff --git a/include/hw/intc/armv7m_nvic.h b/include/hw/intc/armv7m_nvic.h
+index 0180c7b0ca..d63d0373dc 100644
+--- a/include/hw/intc/armv7m_nvic.h
++++ b/include/hw/intc/armv7m_nvic.h
+@@ -86,4 +86,14 @@ struct NVICState {
+     qemu_irq sysresetreq;
+ };
+ 
++// HOEDUR: START
++// make internal NVIC reset functions public
++int nvic_post_load(void *opaque, int version_id);
++int nvic_security_post_load(void *opaque, int version_id);
++
++// add an NVIC (cpu-)abort hook
++typedef void nvic_abort_hook_t(int irq);
++extern nvic_abort_hook_t *nvic_abort_hook;
++// HOEDUR: END
++
+ #endif
+diff --git a/include/qemu/plugin.h b/include/qemu/plugin.h
+index 145f8a221a..238f55ef10 100644
+--- a/include/qemu/plugin.h
++++ b/include/qemu/plugin.h
+@@ -272,8 +272,18 @@ static inline void qemu_plugin_vcpu_mem_cb(CPUState *cpu, uint64_t vaddr,
+                                            enum qemu_plugin_mem_rw rw)
+ { }
+ 
++// HOEDUR: START
++typedef void tb_flush_hook_t(void);
++extern tb_flush_hook_t *tb_flush_hook;
++// HOEDUR: END
++
+ static inline void qemu_plugin_flush_cb(void)
+-{ }
++{
++    // HOEDUR: tcg buffer flush hook
++    if (tb_flush_hook) {
++        tb_flush_hook();
++    }
++}
+ 
+ static inline void qemu_plugin_atexit_cb(void)
+ { }
+diff --git a/include/qemu/thread.h b/include/qemu/thread.h
+index af19f2b3fc..6020f0fa0a 100644
+--- a/include/qemu/thread.h
++++ b/include/qemu/thread.h
+@@ -241,50 +241,19 @@ static inline void qemu_spin_destroy(const QemuSpin *spin)
+ #endif
+ }
+ 
+-static inline void qemu_spin_lock(QemuSpin *spin)
+-{
+-#ifdef CONFIG_TSAN
+-    __tsan_mutex_pre_lock(spin, 0);
+-#endif
+-    while (unlikely(__sync_lock_test_and_set(&spin->value, true))) {
+-        while (qatomic_read(&spin->value)) {
+-            cpu_relax();
+-        }
+-    }
+-#ifdef CONFIG_TSAN
+-    __tsan_mutex_post_lock(spin, 0, 0);
+-#endif
+-}
++static inline void qemu_spin_lock(QemuSpin *spin) { }
+ 
+ static inline bool qemu_spin_trylock(QemuSpin *spin)
+ {
+-#ifdef CONFIG_TSAN
+-    __tsan_mutex_pre_lock(spin, __tsan_mutex_try_lock);
+-#endif
+-    bool busy = __sync_lock_test_and_set(&spin->value, true);
+-#ifdef CONFIG_TSAN
+-    unsigned flags = __tsan_mutex_try_lock;
+-    flags |= busy ? __tsan_mutex_try_lock_failed : 0;
+-    __tsan_mutex_post_lock(spin, flags, 0);
+-#endif
+-    return busy;
++    return false;
+ }
+ 
+ static inline bool qemu_spin_locked(QemuSpin *spin)
+ {
+-    return qatomic_read(&spin->value);
++    return false;
+ }
+ 
+-static inline void qemu_spin_unlock(QemuSpin *spin)
+-{
+-#ifdef CONFIG_TSAN
+-    __tsan_mutex_pre_unlock(spin, 0);
+-#endif
+-    __sync_lock_release(&spin->value);
+-#ifdef CONFIG_TSAN
+-    __tsan_mutex_post_unlock(spin, 0);
+-#endif
+-}
++static inline void qemu_spin_unlock(QemuSpin *spin) { }
+ 
+ struct QemuLockCnt {
+ #ifndef CONFIG_LINUX
+diff --git a/include/tcg/tcg.h b/include/tcg/tcg.h
+index 26a70526f1..698d7bbc12 100644
+--- a/include/tcg/tcg.h
++++ b/include/tcg/tcg.h
+@@ -280,7 +280,7 @@ typedef struct TCGPool {
+ #define TCG_POOL_CHUNK_SIZE 32768
+ 
+ #define TCG_MAX_TEMPS 512
+-#define TCG_MAX_INSNS 512
++#define TCG_MAX_INSNS 256
+ 
+ /* when the size of the arguments of a called function is smaller than
+    this value, they are statically allocated in the TB stack frame */
+@@ -1266,4 +1266,31 @@ static inline const TCGOpcode *tcg_swap_vecop_list(const TCGOpcode *n)
+ 
+ bool tcg_can_emit_vecop_list(const TCGOpcode *, TCGType, unsigned);
+ 
++// HOEDUR: START
++// forward declare required structs
++struct DisasContextBase;
++struct TCGHelperInfo;
++
++// add tcg callback function
++void add_tcg_function(struct TCGHelperInfo *helper);
++
++// tcg hooks
++typedef struct TCGHelperInfo* tcg_hook_t(struct DisasContextBase *db);
++extern tcg_hook_t *tb_start_hook;
++extern tcg_hook_t *tb_end_hook;
++extern tcg_hook_t *insn_start_hook;
++extern tcg_hook_t *insn_end_hook;
++
++// memory access hook
++typedef struct TCGHelperInfo* mem_access_hook_t(MemOpIdx oi, enum qemu_plugin_mem_rw rw);
++extern mem_access_hook_t *mem_access_hook;
++
++// ROM write hook config
++typedef void rom_write_hook_t(uintptr_t retaddr, target_ulong addr, uint64_t val, size_t size);
++extern rom_write_hook_t *rom_write_hook;
++
++// thread-local tcg prologue init
++void hoedur_tcg_prologue_init(void);
++// HOEDUR: END
++
+ #endif /* TCG_H */
+diff --git a/meson.build b/meson.build
+index 20fddbd707..125964edb9 100644
+--- a/meson.build
++++ b/meson.build
+@@ -1,6 +1,6 @@
+ project('qemu', ['c'], meson_version: '>=0.59.3',
+         default_options: ['warning_level=1', 'c_std=gnu11', 'cpp_std=gnu++11', 'b_colorout=auto',
+-                          'b_staticpic=false', 'stdsplit=false', 'optimization=2', 'b_pie=true'],
++                          'b_staticpic=true', 'stdsplit=false', 'optimization=2', 'b_pie=true'],
+         version: files('VERSION'))
+ 
+ add_test_setup('quick', exclude_suites: ['slow', 'thorough'], is_default: true)
+@@ -3490,6 +3490,14 @@ foreach target : target_dirs
+       'sources': files('softmmu/main.c'),
+       'dependencies': []
+     }]
++    shared_library('qemu-system-' + target_name,
++      c_args: c_args,
++      dependencies: arch_deps + deps,
++      objects: lib.extract_all_objects(recursive: true),
++      link_language: link_language,
++      link_depends: [block_syms, qemu_syms],
++      link_args: link_args)
++
+     if targetos == 'windows' and (sdl.found() or gtk.found())
+       execs += [{
+         'name': 'qemu-system-' + target_name + 'w',
+diff --git a/scripts/qapi/events.py b/scripts/qapi/events.py
+index 27b44c49f5..035dfac78d 100644
+--- a/scripts/qapi/events.py
++++ b/scripts/qapi/events.py
+@@ -78,6 +78,19 @@ def gen_param_var(typ: QAPISchemaObjectType) -> str:
+     return ret
+ 
+ 
++def gen_event_none(name: str,
++                   arg_type: Optional[QAPISchemaObjectType],
++                   features: List[QAPISchemaFeature],
++                   boxed: bool,
++                   event_enum_name: str,
++                   event_emit: str) -> str:
++    return mcgen('''
++
++%(proto)s { }
++''',
++                 proto=build_event_send_proto(name, arg_type, boxed))
++
++
+ def gen_event_send(name: str,
+                    arg_type: Optional[QAPISchemaObjectType],
+                    features: List[QAPISchemaFeature],
+@@ -236,7 +249,7 @@ def visit_event(self,
+                     boxed: bool) -> None:
+         with ifcontext(ifcond, self._genh, self._genc):
+             self._genh.add(gen_event_send_decl(name, arg_type, boxed))
+-            self._genc.add(gen_event_send(name, arg_type, features, boxed,
++            self._genc.add(gen_event_none(name, arg_type, features, boxed,
+                                           self._event_enum_name,
+                                           self._event_emit_name))
+         # Note: we generate the enum member regardless of @ifcond, to
+diff --git a/softmmu/cpus.c b/softmmu/cpus.c
+index 23b30484b2..bf8b803aa3 100644
+--- a/softmmu/cpus.c
++++ b/softmmu/cpus.c
+@@ -482,7 +482,7 @@ QEMU_DEFINE_STATIC_CO_TLS(bool, iothread_locked)
+ 
+ bool qemu_mutex_iothread_locked(void)
+ {
+-    return get_iothread_locked();
++    return true;
+ }
+ 
+ bool qemu_in_main_thread(void)
+@@ -494,21 +494,9 @@ bool qemu_in_main_thread(void)
+  * The BQL is taken from so many places that it is worth profiling the
+  * callers directly, instead of funneling them all through a single function.
+  */
+-void qemu_mutex_lock_iothread_impl(const char *file, int line)
+-{
+-    QemuMutexLockFunc bql_lock = qatomic_read(&qemu_bql_mutex_lock_func);
+-
+-    g_assert(!qemu_mutex_iothread_locked());
+-    bql_lock(&qemu_global_mutex, file, line);
+-    set_iothread_locked(true);
+-}
++void qemu_mutex_lock_iothread_impl(const char *file, int line) { }
+ 
+-void qemu_mutex_unlock_iothread(void)
+-{
+-    g_assert(qemu_mutex_iothread_locked());
+-    set_iothread_locked(false);
+-    qemu_mutex_unlock(&qemu_global_mutex);
+-}
++void qemu_mutex_unlock_iothread(void) { }
+ 
+ void qemu_cond_wait_iothread(QemuCond *cond)
+ {
+diff --git a/target/arm/cpu_tcg.c b/target/arm/cpu_tcg.c
+index 3099b38e32..2f5453d31f 100644
+--- a/target/arm/cpu_tcg.c
++++ b/target/arm/cpu_tcg.c
+@@ -150,8 +150,8 @@ void define_cortex_a72_a57_a53_cp_reginfo(ARMCPU *cpu)
+ #if !defined(CONFIG_USER_ONLY) && defined(CONFIG_TCG)
+ static bool arm_v7m_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
+ {
+-    CPUClass *cc = CPU_GET_CLASS(cs);
+-    ARMCPU *cpu = ARM_CPU(cs);
++    CPUClass *cc = (CPUClass *)cs->parent_obj.parent_obj.class;
++    ARMCPU *cpu = (ARMCPU *)cs;
+     CPUARMState *env = &cpu->env;
+     bool ret = false;
+ 
+diff --git a/target/arm/m_helper.c b/target/arm/m_helper.c
+index 308610f6b4..93dcdd94ed 100644
+--- a/target/arm/m_helper.c
++++ b/target/arm/m_helper.c
+@@ -35,6 +35,9 @@
+ #include "semihosting/common-semi.h"
+ #endif
+ 
++// HOEDUR
++#include "hw/intc/armv7m_nvic.h"
++
+ static void v7m_msr_xpsr(CPUARMState *env, uint32_t mask,
+                          uint32_t reg, uint32_t val)
+ {
+@@ -857,6 +860,11 @@ static void v7m_exception_taken(ARMCPU *cpu, uint32_t lr, bool dotailchain,
+     int exc;
+     bool push_failed = false;
+ 
++    // HOEDUR: break exception loop
++    if (cpu->parent_obj.crash_occurred) {
++        return;
++    }
++
+     armv7m_nvic_get_pending_irq_info(env->nvic, &exc, &targets_secure);
+     qemu_log_mask(CPU_LOG_INT, "...taking pending %s exception %d\n",
+                   targets_secure ? "secure" : "nonsecure", exc);
+diff --git a/tcg/tcg-op.c b/tcg/tcg-op.c
+index 019fab00cc..6a15099bf0 100644
+--- a/tcg/tcg-op.c
++++ b/tcg/tcg-op.c
+@@ -2875,17 +2875,26 @@ static void tcg_gen_req_mo(TCGBar type)
+ 
+ static inline TCGv plugin_prep_mem_callbacks(TCGv vaddr)
+ {
++    // HOEDUR: keep vaddr for mem_access_hook
+ #ifdef CONFIG_PLUGIN
+-    if (tcg_ctx->plugin_insn != NULL) {
++    bool plugin_insn = tcg_ctx->plugin_insn != NULL;
++#else
++    bool plugin_insn = false;
++#endif
++
++    if (plugin_insn | !!mem_access_hook) {
+         /* Save a copy of the vaddr for use after a load.  */
+         TCGv temp = tcg_temp_new();
+         tcg_gen_mov_tl(temp, vaddr);
+         return temp;
+     }
+-#endif
++
+     return vaddr;
+ }
+ 
++// HOEDUR: include TCGHelperInfo
++#include <tcg/tcg-internal.h>
++
+ static void plugin_gen_mem_callbacks(TCGv vaddr, MemOpIdx oi,
+                                      enum qemu_plugin_mem_rw rw)
+ {
+@@ -2896,6 +2905,21 @@ static void plugin_gen_mem_callbacks(TCGv vaddr, MemOpIdx oi,
+         tcg_temp_free(vaddr);
+     }
+ #endif
++
++    // HOEDUR: mem access hook
++    if (mem_access_hook) {
++        TCGHelperInfo* callback = mem_access_hook(oi, rw);
++
++        if (callback) {
++            // call mem access callback function with vaddr, meminfo
++            TCGv_i32 info = tcg_const_i32(make_plugin_meminfo(oi, rw));
++            TCGTemp *args[2] = { tcgv_i32_temp(vaddr), tcgv_i32_temp(info) };
++            tcg_gen_callN(callback->func, NULL, 2, args);
++            tcg_temp_free_i64(info);
++        }
++
++        tcg_temp_free_i32(vaddr);
++    }
+ }
+ 
+ void tcg_gen_qemu_ld_i32(TCGv_i32 val, TCGv addr, TCGArg idx, MemOp memop)
+diff --git a/tcg/tcg.c b/tcg/tcg.c
+index 0f9cfe96f2..77c123348c 100644
+--- a/tcg/tcg.c
++++ b/tcg/tcg.c
+@@ -4768,3 +4768,32 @@ void tcg_expand_vec_op(TCGOpcode o, TCGType t, unsigned e, TCGArg a0, ...)
+     g_assert_not_reached();
+ }
+ #endif
++
++// HOEDUR: START
++// add tcg callback function
++void add_tcg_function(TCGHelperInfo *helper) {
++    g_hash_table_insert(helper_table, (gpointer)helper->func, helper);
++}
++
++// tcg hooks
++tcg_hook_t *tb_start_hook = NULL;
++tcg_hook_t *tb_end_hook = NULL;
++tcg_hook_t *insn_start_hook = NULL;
++tcg_hook_t *insn_end_hook = NULL;
++
++// memory access hook
++mem_access_hook_t *mem_access_hook = NULL;
++
++// ROM write hook config
++rom_write_hook_t *rom_write_hook = NULL;
++
++// tcg buffer flush hook
++tb_flush_hook_t *tb_flush_hook = NULL;
++
++// thread-local tcg prologue init
++void hoedur_tcg_prologue_init() {
++#if defined(CONFIG_SOFTMMU)
++    tcg_prologue_init(tcg_ctx);
++#endif
++}
++// HOEDUR: END
+diff --git a/util/qemu-thread-posix.c b/util/qemu-thread-posix.c
+index ac1d56e673..9a0ef0d682 100644
+--- a/util/qemu-thread-posix.c
++++ b/util/qemu-thread-posix.c
+@@ -79,44 +79,14 @@ void qemu_mutex_destroy(QemuMutex *mutex)
+         error_exit(err, __func__);
+ }
+ 
+-void qemu_mutex_lock_impl(QemuMutex *mutex, const char *file, const int line)
+-{
+-    int err;
+-
+-    assert(mutex->initialized);
+-    qemu_mutex_pre_lock(mutex, file, line);
+-    err = pthread_mutex_lock(&mutex->lock);
+-    if (err)
+-        error_exit(err, __func__);
+-    qemu_mutex_post_lock(mutex, file, line);
+-}
++void qemu_mutex_lock_impl(QemuMutex *mutex, const char *file, const int line) { }
+ 
+ int qemu_mutex_trylock_impl(QemuMutex *mutex, const char *file, const int line)
+ {
+-    int err;
+-
+-    assert(mutex->initialized);
+-    err = pthread_mutex_trylock(&mutex->lock);
+-    if (err == 0) {
+-        qemu_mutex_post_lock(mutex, file, line);
+-        return 0;
+-    }
+-    if (err != EBUSY) {
+-        error_exit(err, __func__);
+-    }
+-    return -EBUSY;
++    return 0;
+ }
+ 
+-void qemu_mutex_unlock_impl(QemuMutex *mutex, const char *file, const int line)
+-{
+-    int err;
+-
+-    assert(mutex->initialized);
+-    qemu_mutex_pre_unlock(mutex, file, line);
+-    err = pthread_mutex_unlock(&mutex->lock);
+-    if (err)
+-        error_exit(err, __func__);
+-}
++void qemu_mutex_unlock_impl(QemuMutex *mutex, const char *file, const int line) { }
+ 
+ void qemu_rec_mutex_init(QemuRecMutex *mutex)
+ {

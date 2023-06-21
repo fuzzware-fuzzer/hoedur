@@ -1,0 +1,14 @@
+[package]
+name = "qemu-sys"
+version = "0.1.0"
+authors = ["Simon Wörner <git@simon-woerner.de>"]
+edition = "2021"
+
+[features]
+arm = []
+
+[dependencies]
+paste = "1.0.12"
+
+[build-dependencies]
+qemu-build = { path = "../qemu-build" }

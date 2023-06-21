@@ -1,0 +1,24 @@
+appenders:
+  stderr:
+    kind: console
+    target: stderr
+    encoder:
+      pattern: "{highlight({level}):7} {target} - {message}{n}"
+
+root:
+  level: info
+  appenders:
+    - stderr
+
+loggers:
+  fuzzer:
+    level: warn
+  qemu_rs::hook:
+    level: warn
+  panic::debug_info:
+    level: error
+    additive: false
+  symbolizer:
+    level: info
+  ptracer:
+    level: info

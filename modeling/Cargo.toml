@@ -1,0 +1,28 @@
+[package]
+name = "modeling"
+version = "0.1.0"
+authors = ["Simon Wörner <git@simon-woerner.de>"]
+edition = "2021"
+
+[features]
+arm = ["qemu-rs/arm"]
+
+[dependencies]
+anyhow = "1.0.71"
+archive = { path = "../archive" }
+bincode = "1.3.3"
+common = { path = "../common" }
+endiannezz = "0.6.5"
+enum-kinds = "0.5.1"
+fastrand = "1.9.0"
+fslock = "0.2.1"
+ihex = "3.0.0"
+indexmap = { version = "1.9.3", features = ["serde", "std"] }
+itertools = "0.10.5"
+libc = "0.2.142"
+log = "0.4.17"
+qemu-rs = { path = "../qemu-rs" }
+serde = { version = "1.0.162", features = ["derive", "rc"] }
+serde_yaml = "0.8.26"
+tar = "0.4.38"
+tempfile = "3.5.0"

@@ -1,0 +1,168 @@
+pub mod trace {
+    use super::dump;
+
+    /**
+    * @Article Trace Functions
+    * ## Trace constants
+    * - `trace::LINE` string with 64 `=`, useful as seperator line
+    */
+    pub const LINE = {
+        let n = 64;
+        let line = "";
+
+        while n > 0 {
+            line = line + "=";
+            n -= 1;
+        }
+
+        line
+    };
+
+    /**
+    * @Article Trace Functions
+    * ## Trace Hook Basic Blocks
+    * `trace::hook_basic_blocks(api: API, basic_blocks: Vec<HookTarget>) -> Result<()>`
+    * `HookTarget` can be a `symbol: String`, `pc: Address` or `(pc: Address, name: String)`
+    *
+    * Trace basic blocks at `address` with register and stack dump.
+    *
+    * Example:
+    * ```rune
+    * pub fn main(api) {
+    *     trace::hook_basic_blocks(api, [
+    *         0xdead_beef,
+    *         "some_function",
+    *         (0x1234_4567, "Some Function"),
+    *         (0x0400_0000, "Another Function"),
+    *     ]);
+    * }
+    * ```
+    */
+    pub fn hook_basic_blocks(api, basic_blocks) {
+        for entry in basic_blocks {
+            log::debug!("{:?}", entry);
+
+            if entry is int {
+                hook_basic_block(api, entry, None);
+            } else if entry is String {
+                for addr in resolve(entry)? {
+                    hook_basic_block(api, addr, Some(entry));
+                }
+            } else {
+                hook_basic_block(api, entry.0, Some(entry.1));
+            }
+        }
+    }
+
+    pub fn hook_basic_block(api, pc, name) {
+        if let Some(name) = name {
+            log::info!("hook {:08x} : {}", pc, name);
+        } else if let Some(symbol) = symbolizer::lookup(pc) {
+            log::info!("hook {:08x} : {}", pc, symbol);
+        } else {
+            log::info!("hook {:08x}", pc);
+        }
+
+        api.on_basic_block(Some(pc), |pc| basic_block(pc, name));
+    }
+
+    /**
+    * @Article Trace Functions
+    * ## Dump Basic Block Info
+    * `trace::basic_block(pc: Address, name: Option<String>) -> Result<()>`
+    *
+    * Dump basic blocks info with register and stack dump.
+    *
+    * Example:
+    * ```rune
+    * pub fn main(api) {
+    *     api.on_basic_block(Some(0xdead_beef), |pc| trace::basic_block(pc, None));
+    *     api.on_basic_block(Some(0x1234_4567), |pc| trace::basic_block(pc, Some("Some Function")));
+    * }
+    * ```
+    */
+    pub fn basic_block(pc, name) {
+        log::info("");
+        log::info(LINE);
+
+        if let Some(name) = name {
+            log::info!("{:08x} : {}", pc, name);
+        } else if let Some(symbol) = symbolizer::lookup(pc) {
+            log::info!("{:08x} : {}", pc, symbol);
+        } else {
+            log::info!("{:08x}", pc);
+        }
+
+        dump::regs();
+        dump::stack(4);
+    }
+
+    /**
+    * @Article Trace Functions
+    * ## Trace Hook RAM Accesses
+    * `trace::hook_ram_accesses(api: API, ram_accesses: Vec<HookTarget>) -> Result<()>`
+    * `HookTarget` can be a `symbol: String`, `pc: Address` or `(pc: Address, name: String)`
+    *
+    * Trace RAM access at `address` with read/write value.
+    *
+    * Example:
+    * ```rune
+    * pub fn main(api) {
+    *     trace::hook_ram_accesses(api, [
+    *         0xdead_beef,
+    *         "some_global",
+    *         (0x1234_4567, "Some Global"),
+    *         (0x0400_0000, "Another Global"),
+    *     ]);
+    * }
+    * ```
+    */
+    pub fn hook_ram_accesses(api, ram_accesses) {
+        for entry in ram_accesses {
+            log::debug!("{:?}", entry);
+
+            if entry is int {
+                hook_ram_access(api, entry, None);
+            } else if entry is String {
+                for addr in resolve(entry)? {
+                    hook_ram_access(api, addr, Some(entry));
+                }
+            } else {
+                hook_ram_access(api, entry.0, Some(entry.1));
+            }
+        }
+    }
+
+    pub fn hook_ram_access(api, addr, name) {
+        if let Some(name) = name {
+            log::info!("hook RAM access {:08x} : {}", addr, name);
+        } else if let Some(symbol) = symbolizer::lookup(addr) {
+            log::info!("hook RAM access {:08x} : {}", addr, symbol);
+        } else {
+            log::info!("hook RAM access {:08x}", addr);
+        }
+
+        api.on_ram_write(None, Some(addr), |pc, address, size, data| ram_access(pc, address, size, data, name));
+    }
+
+    pub fn ram_access(pc, address, size, data, name) {
+        basic_block(pc, name);
+
+        if let Some(name) = name {
+            log::warn!("[{:08x}] {} = {:08x}", address, name, data);
+        } else if let Some(symbol) = symbolizer::lookup(address) {
+            log::warn!("[{:08x}] {} = {:08x}", address, symbol, data);
+        } else {
+            log::warn!("[{:08x}] {:08x}", address, data);
+        }
+    }
+
+    fn resolve(symbol) {
+        let addresses = symbolizer::resolve_all(symbol)?;
+        if addresses.len() == 0 {
+            log::warn!("Symbol \"{}\" not found", symbol);
+        }
+
+        Ok(addresses)
+    }
+}

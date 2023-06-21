@@ -1,0 +1,13 @@
+**/*.log
+/corpus
+/target
+hoedur/completions/
+qemu-sys/src/bindings/*/.commit-*
+qemu-sys/src/bindings/release/*.rs
+qemu-sys/src/bindings/debug/*.rs
+
+__pycache__/
+
+.vscode
+
+.gdb_history

@@ -1,0 +1,18 @@
+[package]
+name = "archive"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.71"
+bincode = "1.3.3"
+common = { path = "../common" }
+enum-kinds = "0.5.1"
+fslock = "0.2.1"
+log = "0.4.17"
+once_cell = "1.17.1"
+semver = { version = "1.0.17", features = ["serde"] }
+serde = { version = "1.0.162", features = ["derive", "rc"] }
+serde_yaml = "0.8.26"
+tar = "0.4.38"
+zstd = "0.12.3"

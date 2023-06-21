@@ -1,0 +1,20 @@
+[workspace]
+members = [
+    ".git-hooks",
+    "archive",
+    "common",
+    "emulator",
+    "frametracer",
+    "fuzzer",
+    "hoedur",
+    "hoedur-analyze",
+    "modeling",
+    "qemu-build",
+    "qemu-rs",
+    "qemu-sys",
+]
+
+[profile.release]
+codegen-units = 1
+opt-level = 3
+lto = true

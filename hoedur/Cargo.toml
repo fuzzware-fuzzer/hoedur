@@ -1,0 +1,43 @@
+[package]
+name = "hoedur"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "hoedur-arm"
+required-features = ["arm"]
+
+[features]
+default = ["arm"]
+arm = ["fuzzer/arm", "emulator/arm", "modeling/arm", "qemu-rs/arm"]
+
+[dependencies]
+anyhow = "1.0.71"
+archive = { path = "../archive" }
+bincode = "1.3.3"
+clap = { version = "4.2.7", features = ["derive", "wrap_help"] }
+common = { path = "../common" }
+emulator = { path = "../emulator" }
+endiannezz = "0.6.5"
+fastrand = "1.9.0"
+frametracer = { path = "../frametracer" }
+fuzzer = { path = "../fuzzer" }
+insta = "1.29.0"
+log = "0.4.17"
+modeling = { path = "../modeling" }
+nix = "0.26.2"
+qemu-rs = { path = "../qemu-rs" }
+serde = { version = "1.0.162", features = ["derive", "rc"] }
+serde_yaml = "0.8.26"
+signal-hook = "0.3.15"
+tempfile = "3.5.0"
+
+[dev-dependencies]
+pretty_assertions = "1.3.0"
+
+[build-dependencies]
+clap = { version = "4.2.7", features = ["derive"] }
+clap_complete = "4.2.1"
+common = { path = "../common" }
+fuzzer = { path = "../fuzzer" }
+modeling = { path = "../modeling" }

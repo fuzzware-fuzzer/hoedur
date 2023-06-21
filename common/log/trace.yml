@@ -1,0 +1,40 @@
+refresh_rate: 30 seconds
+
+appenders:
+  stderr:
+    kind: console
+    target: stderr
+    encoder:
+      pattern: "{date(%H:%M:%S%.6f)} {highlight({level}):7} {target} - {message}{n}"
+    filters:
+      - kind: threshold
+        level: debug
+
+  logfile:
+    kind: file
+    path: "hoedur.trace.log"
+    append: false
+    encoder:
+      # Thread ID + name: {([{I} {thread}]):25}
+      pattern: "{date(%H:%M:%S%.6f)} {highlight({level}):7} {target} - {message}{n}"
+
+root:
+  level: trace
+  appenders:
+    - stderr
+    - logfile
+
+loggers:
+  panic::debug_info:
+    level: trace
+    additive: false
+    appenders:
+      - logfile
+  emulator::emulator:
+    level: debug
+  qemu_rs::snapshot:
+    level: debug
+  symbolizer:
+    level: info
+  ptracer:
+    level: info

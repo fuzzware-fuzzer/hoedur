@@ -1,0 +1,140 @@
+pub mod dump {
+    /**
+    * @Article Dump Functions
+    * ## Dump Register
+    * `dump::reg(name: String) -> Result<()>`
+    *
+    * Dump content of a register, try to derefence it, try to print as c-string.
+    *
+    * Example:
+    * ```rune
+    * dump::reg("R0");
+    * ```
+    */
+    pub fn reg(name) {
+        let value = register::read(name)?;
+        log::info!("{} = {:08x}", name, value);
+        log::info!("*{} = {:08x}", name, memory::read_u32(value)?);
+        hexdump(value, 64);
+
+        let str = memory::read_cstring(value)?;
+        if str.len() > 0 {
+            log::info!("cstr(*{}) = {}", name, str);
+        }
+    }
+
+    /**
+    * @Article Dump Functions
+    * ## Dump All Registers
+    * `dump::regs() -> Result<()>`
+    *
+    * Dump content of all registers.
+    *
+    * Example:
+    * ```rune
+    * dump::regs();
+    * ```
+    */
+    pub fn regs() {
+        let line = "";
+
+        for entry in register::list().iter().enumerate() {
+            if let (i, name) = entry {
+                let value = register::read(name)?;
+                line = line + format!("{} = {:08x}", format!("{: >3}", name), value);
+
+                if i % 8 == 7 {
+                    log::info(line);
+                    line = "";
+                } else {
+                    line += "    ";
+                }
+            }
+        }
+
+        if line.len() > 0 {
+            log::info(line);
+        }
+    }
+
+    /**
+    * @Article Dump Functions
+    * ## Dump Stack
+    * `dump::stack(count: usize) -> Result<()>`
+    *
+    * Dump `count` stack values.
+    *
+    * Example:
+    * ```rune
+    * dump::stack(8);
+    * ```
+    */
+    pub fn stack(count) {
+        let sp = register::read("SP")?;
+        log::debug(format!("SP = {:08x}", sp));
+
+        for i in 0..count {
+            let address = sp + 4 * i;
+            let value = memory::read_u32(address)?;
+
+            log::info!("{} = {}", format!("{:08x}", address), format!("{:08x}", value));
+        }
+    }
+
+    /**
+    * @Article Dump Functions
+    * ## Hexdump
+    * `dump::hexdump(start: Address, len: usize) -> Result<()>`
+    *
+    * Hexdump `len` bytes of memory content starting at address `start`.
+    *
+    * Example:
+    * ```rune
+    * dump::hexdump(0xdead_beef, 0x80);
+    * ```
+    */
+    pub fn hexdump(start, len) {
+        const BYTES = 4;
+        let i = 0;
+        let lines = (len + BYTES - 1) / BYTES;
+
+        while i / BYTES < lines {
+            let addr = start + i;
+            let val = memory::read_u32(addr)?;
+            let line = format!("[{:08x}]  ", addr);
+
+            // hex
+            for n in 0..BYTES {
+                if i + n < len {
+                    line += format!("{:02x} ", common::byte(val, n));
+                } else {
+                    line += "   ";
+                }
+
+                if n == BYTES - 1 {
+                    line += " ";
+                }
+            }
+
+            // ascii
+            line += " |";
+            for n in 0..BYTES {
+                if i + n >= len {
+                    line += " ";
+                    continue;
+                }
+
+                let byte = common::byte(val, n);
+                if byte >= 0x20 && byte < 0x7f {
+                    line += format!("{}", char::from_int(byte).unwrap());
+                } else {
+                    line += ".";
+                }
+            }
+            line += "|";
+
+            log::info(line);
+            i += BYTES;
+        }
+    }
+}

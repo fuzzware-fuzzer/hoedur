@@ -1,0 +1,20 @@
+Signed-off-by: Daniele Buono <dbuono@linux.vnet.ibm.com>
+---
+ configure | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/configure b/configure
+index e6754c1e87..9dc05cfb8a 100755
+--- a/configure
++++ b/configure
+@@ -2000,6 +2000,8 @@ add_to nowarn_flags -Wno-shift-negative-value
+ add_to nowarn_flags -Wno-string-plus-int
+ add_to nowarn_flags -Wno-typedef-redefinition
+ add_to nowarn_flags -Wno-tautological-type-limit-compare
++add_to nowarn_flags -Wno-gnu-variable-sized-type-not-at-end
++add_to nowarn_flags -Wno-void-pointer-to-enum-cast
+ add_to nowarn_flags -Wno-psabi
+ 
+ gcc_flags="$warn_flags $nowarn_flags"
+-- 
+2.17.1
