@@ -5,6 +5,6 @@ authors = ["Simon Wörner <git@simon-woerner.de>"]
 edition = "2021"
 
 [dependencies]
-bindgen = "0.60.1"
+bindgen = { git = "https://github.com/SWW13/rust-bindgen.git", branch = "hoedur-llvm16" }
 json = "0.12.4"
 shell-words = "1.1.0"
