@@ -2,6 +2,8 @@
 
 Hoedur is a firmware fuzzing implementation which utilizes a multi-stream input format that is described in our USENIX Security 2023 paper `HOEDUR: Embedded Firmware Fuzzing using Multi-Stream Inputs`.
 
+Our artifact evaluation is available at [hoedur-experiments](https://github.com/fuzzware-fuzzer/hoedur-experiments) including details for [citing our paper](https://github.com/fuzzware-fuzzer/hoedur-experiments#citing-our-paper).
+
 ## Repository Overview
 
 Hoedur consists of different main components as listed below:
