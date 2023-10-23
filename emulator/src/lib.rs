@@ -32,7 +32,7 @@ use modeling::{
     modeling::Modeling,
 };
 use qemu_rs::{
-    board::Board, init_qemu, memory::MemoryMap, qcontrol, CpuModel, Event, Exception, MemoryBlock,
+    init_qemu, memory::MemoryMap, qcontrol, Board, CpuModel, Event, Exception, MemoryBlock,
     MmioRewound, QemuCallback, QemuStopReason, Snapshot, USize,
 };
 use serde::{Deserialize, Serialize};

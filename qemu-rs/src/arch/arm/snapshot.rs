@@ -6,7 +6,8 @@ use std::{
 use anyhow::{bail, Context, Result};
 use qemu_sys::{arm_feature, arm_features};
 
-use crate::{fuzz::machine::Cpu, systick::SysTickSnapshot};
+use super::systick::SysTickSnapshot;
+use crate::fuzz::machine::Cpu;
 
 const M_REG_NS: usize = 0;
 const M_REG_S: usize = 1;

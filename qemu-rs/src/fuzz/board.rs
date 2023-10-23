@@ -5,7 +5,7 @@ use anyhow::{bail, Result};
 use qemu_sys::{cstr, memory_region_init_alias};
 
 use crate::{
-    board::Board, hook::mmio::MmioRegionCallbackHandler, memory, CpuModel, QemuCallbackShared,
+    hook::mmio::MmioRegionCallbackHandler, memory, Board, CpuModel, QemuCallbackShared,
     QemuStateControl,
 };
 

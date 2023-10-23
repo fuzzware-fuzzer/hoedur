@@ -12,11 +12,10 @@ use common::{
 use signal_hook::consts::TERM_SIGNALS;
 
 use crate::{
-    board::Board,
     coverage,
     fuzz::{self, board::drop_qemu_state_control, tcg::tcg_cpu_loop},
     hook::{self, drop_qemu_hook},
-    memory, Address, CpuModel, MemorySnapshot, QemuCallbackShared,
+    memory, Address, Board, CpuModel, MemorySnapshot, QemuCallbackShared,
 };
 
 static QEMU_CREATED: AtomicBool = AtomicBool::new(false);
@@ -224,7 +223,7 @@ pub(crate) fn handle_stop_request() {
 
 pub fn drop() -> Result<()> {
     #[cfg(feature = "arm")]
-    crate::systick::drop_systick();
+    crate::arm::systick::drop_systick();
     drop_qemu_state_control();
     drop_qemu_hook().context("Failed to drop qemu callback hooks")
 }

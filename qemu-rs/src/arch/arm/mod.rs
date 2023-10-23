@@ -1,16 +1,18 @@
 use std::convert::TryFrom;
 
-pub mod board;
-pub mod exception;
-pub mod exception_level;
-pub mod nvic;
-pub mod register;
-pub mod snapshot;
-pub mod systick;
+mod board;
+mod exception;
+mod register;
 
+pub(crate) mod exception_level;
+pub(crate) mod nvic;
+pub(crate) mod snapshot;
+pub(crate) mod systick;
+
+pub use board::Board;
 pub use exception::{CpuException, Exception};
 pub use nvic::{InternalException, NvicException};
-pub use register::Register;
+pub use register::{Mode, Register};
 pub use systick::systick;
 
 #[derive(Debug, Clone, Copy)]

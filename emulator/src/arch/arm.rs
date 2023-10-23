@@ -4,8 +4,7 @@ use anyhow::{Context, Result};
 use common::{config::emulator::FIX_TASK_SWITCH_EDGE, FxHashMap};
 use modeling::hardware::Input;
 use qemu_rs::{
-    board::Board, qcontrol, Address, CpuException, CpuModel, Event, Exception, NvicException,
-    Register,
+    qcontrol, Address, Board, CpuException, CpuModel, Event, Exception, NvicException, Register,
 };
 
 use crate::{debug, EmulatorData};
@@ -20,8 +19,8 @@ pub type ArmEmulatorSnapshot = ArmEmulator;
 
 #[derive(Debug, Default, Clone)]
 pub struct ExceptionData {
-    mode: Option<qemu_rs::register::Mode>,
-    mode_stack: Vec<qemu_rs::register::Mode>,
+    mode: Option<qemu_rs::Mode>,
+    mode_stack: Vec<qemu_rs::Mode>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -50,10 +49,8 @@ impl ExceptionData {
     fn on_exception(&mut self) {
         debug_assert_eq!(self.mode, None);
 
-        self.mode = qemu_rs::register::Mode::from_cpsr(
-            qemu_rs::qcontrol().register(qemu_rs::Register::CPSR),
-        )
-        .ok();
+        self.mode =
+            qemu_rs::Mode::from_cpsr(qemu_rs::qcontrol().register(qemu_rs::Register::CPSR)).ok();
     }
 
     fn on_exception_level_change(&mut self) -> Option<usize> {

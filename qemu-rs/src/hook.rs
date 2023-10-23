@@ -108,8 +108,8 @@ pub(crate) fn register_hooks(
     // ARM specific hooks
     #[cfg(feature = "arm")]
     {
-        crate::nvic::register_nvic_abort_hook();
-        crate::exception_level::register_change_hook();
+        crate::arm::nvic::register_nvic_abort_hook();
+        crate::arm::exception_level::register_change_hook();
     }
 
     // set hook callback

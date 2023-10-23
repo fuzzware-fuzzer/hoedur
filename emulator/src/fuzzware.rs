@@ -14,9 +14,8 @@ use modeling::fuzzware::config::{
     Target,
 };
 use qemu_rs::{
-    board::Board,
     memory::{FileData, MemoryMap, MemoryPermission, MemoryRegion, MemoryType},
-    Address,
+    Address, Board,
 };
 
 use crate::{
