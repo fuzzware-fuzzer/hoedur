@@ -1,6 +1,7 @@
 use std::{
     ffi::c_void,
     mem::{self, MaybeUninit},
+    ptr,
     sync::atomic,
 };
 
@@ -36,14 +37,14 @@ extern "C" fn create_vcpu_thread(cpu: *mut qemu_sys::CPUState) {
     log::trace!("cpu = {:?}", cpu);
 
     unsafe {
-        qemu_sys::qemu_thread_get_self(&mut TCG_THREAD);
+        qemu_sys::qemu_thread_get_self(ptr::addr_of_mut!(TCG_THREAD));
 
         TCG_HALT_COND.write(qemu_sys::QemuCond::default());
         qemu_sys::qemu_cond_init(TCG_HALT_COND.assume_init_mut());
     };
 
     // set the cpu thread
-    cpu.thread = unsafe { &mut TCG_THREAD };
+    cpu.thread = unsafe { ptr::addr_of_mut!(TCG_THREAD) };
     cpu.halt_cond = unsafe { TCG_HALT_COND.assume_init_mut() };
     // cpu.thread_id = first_cpu.thread_id;
     cpu.can_do_io = 1;
@@ -233,7 +234,7 @@ extern "C" fn tcg_accel_class_init(oc: *mut qemu_sys::ObjectClass, _data: *mut c
 
     ac.name = cstr!("fuzz-tcg");
     ac.init_machine = Some(tcg_init_machine);
-    ac.allowed = unsafe { &mut ALLOWED };
+    ac.allowed = unsafe { ptr::addr_of_mut!(ALLOWED) };
 }
 
 extern "C" fn tcg_register_types() {

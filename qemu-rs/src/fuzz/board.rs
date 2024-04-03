@@ -1,4 +1,4 @@
-use std::{mem, os};
+use std::{mem, os, ptr};
 
 use anyhow::{bail, Result};
 
@@ -31,11 +31,11 @@ pub(super) fn cpu_model() -> CpuModel {
 
 impl QemuStateControl {
     pub(crate) fn get_ref() -> &'static QemuStateControl {
-        unsafe { &QEMU_STATE }
+        unsafe { ptr::addr_of!(QEMU_STATE).as_ref().unwrap() }
     }
 
     pub(crate) fn get_mut() -> &'static mut QemuStateControl {
-        unsafe { &mut QEMU_STATE }
+        unsafe { ptr::addr_of_mut!(QEMU_STATE).as_mut().unwrap() }
     }
 }
 
@@ -119,7 +119,13 @@ extern "C" fn fuzzboard_realize(dev: *mut qemu_sys::DeviceState, _errp: *mut *mu
         let mut callback_handler = None;
         match memory_map.data() {
             memory::QemuMemoryData::Zero { .. } => unsafe {
-                memory_region_init_ram(region, dev as _, name, size, &mut qemu_sys::error_fatal)
+                memory_region_init_ram(
+                    region,
+                    dev as _,
+                    name,
+                    size,
+                    ptr::addr_of_mut!(qemu_sys::error_fatal),
+                )
             },
             memory::QemuMemoryData::File { ref data, .. } => unsafe {
                 memory_region_init_ram_ptr(region, dev as _, name, size, data.as_ptr() as _)
@@ -210,7 +216,7 @@ extern "C" fn fuzzboard_realize(dev: *mut qemu_sys::DeviceState, _errp: *mut *mu
                 armv7m as _,
                 cstr!("memory"),
                 get_system_memory() as _,
-                &mut qemu_sys::error_abort,
+                ptr::addr_of_mut!(qemu_sys::error_abort),
             );
         }
         if !unsafe { qemu_sys::sysbus_realize(armv7m as _, _errp) } {

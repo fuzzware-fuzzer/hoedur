@@ -1,4 +1,4 @@
-use std::{ffi::c_void, mem};
+use std::{ffi::c_void, mem, ptr};
 
 use qemu_sys::cstr;
 
@@ -35,7 +35,7 @@ extern "C" fn fuzzmachine_init(machine: *mut qemu_sys::MachineState) {
     }
 
     let dev = unsafe { qdev_new(TYPE_FUZZ_BOARD) };
-    unsafe { sysbus_realize_and_unref(dev as _, &mut qemu_sys::error_fatal) };
+    unsafe { sysbus_realize_and_unref(dev as _, ptr::addr_of_mut!(qemu_sys::error_fatal)) };
 }
 
 extern "C" fn fuzzmachine_class_init(oc: *mut qemu_sys::ObjectClass, _data: *mut c_void) {
