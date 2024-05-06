@@ -55,7 +55,7 @@ impl CoverageBitmap {
 
 pub fn edge_bitmap(raw_bitmap: &RawBitmap) -> CoverageBitmap {
     let raw_bitmap: &[RawEntry] = raw_bitmap.as_ref();
-    let mut features = Vec::with_capacity(raw_bitmap.len());
+    let mut features = vec![Feature(0); raw_bitmap.len()];
 
     let (prefix, qwords, postfix) = unsafe { raw_bitmap.align_to::<usize>() };
     debug_assert!(prefix.is_empty());
@@ -84,7 +84,7 @@ pub fn edge_bitmap(raw_bitmap: &RawBitmap) -> CoverageBitmap {
         }
     }
 
-    unsafe { features.set_len(feature_idx) };
+    features.truncate(feature_idx);
 
     CoverageBitmap(features)
 }
