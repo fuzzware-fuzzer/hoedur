@@ -24,7 +24,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE. */
 
-use std::{fmt, io};
+use std::fmt;
 
 use qemu_rs::ISize;
 
@@ -47,34 +47,6 @@ impl<'a, T: fmt::Write> fmt::Write for WriteCounter<'a, T> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         self.1 += s.len();
         self.0.write_str(s)
-    }
-}
-
-struct FmtWriter<T: io::Write>(T, io::Result<()>);
-
-impl<T: io::Write> fmt::Write for FmtWriter<T> {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        match self.0.write_all(s.as_bytes()) {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                self.1 = Err(e);
-                Err(fmt::Error)
-            }
-        }
-    }
-}
-
-struct IoWriteCounter<'a, T: io::Write>(&'a mut T, usize);
-
-impl<'a, T: io::Write> io::Write for IoWriteCounter<'a, T> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.write_all(buf)?;
-        self.1 += buf.len();
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.0.flush()
     }
 }
 
